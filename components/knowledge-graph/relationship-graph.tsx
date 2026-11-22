@@ -7,6 +7,7 @@ import {
   type Edge,
   type Node,
   type NodeMouseHandler,
+  type OnNodesChange,
 } from "@xyflow/react";
 import { LoaderCircle } from "lucide-react";
 import type { KnowledgeNodeData } from "@/lib/knowledge";
@@ -20,6 +21,7 @@ type RelationshipGraphProps = {
   notice: string;
   stageMessage?: string;
   onNodeClick: NodeMouseHandler;
+  onNodesChange: OnNodesChange;
 };
 
 export function RelationshipGraph({
@@ -28,6 +30,7 @@ export function RelationshipGraph({
   notice,
   stageMessage,
   onNodeClick,
+  onNodesChange,
 }: RelationshipGraphProps) {
   return (
     <section className="relative min-h-0 min-w-0 bg-[#eef1eb]" aria-label="知识图谱">
@@ -40,6 +43,7 @@ export function RelationshipGraph({
         edges={edges}
         nodeTypes={nodeTypes}
         onNodeClick={onNodeClick}
+        onNodesChange={onNodesChange}
         fitView
         fitViewOptions={{ padding: 0.22 }}
         minZoom={0.45}

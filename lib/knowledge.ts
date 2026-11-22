@@ -1,42 +1,75 @@
-export type NodeStatus = "confirmed" | "suggested" | "needs_review";
+import { z } from "zod";
 
-export type KnowledgeNodeData = {
-  termZh: string;
-  termEn: string;
-  domainZh: string;
-  domainEn: string;
-  scopeZh: string;
-  scopeEn: string;
-  definitionZh: string;
-  definitionEn: string;
-  exampleZh: string;
-  status: NodeStatus;
-  confidence?: number;
-  sourceCount?: number;
-  createdAt?: string;
-  suggestionReason?: string;
-};
+export const nodeStatusSchema = z.enum(["confirmed", "suggested", "needs_review"]);
+export type NodeStatus = z.infer<typeof nodeStatusSchema>;
 
-export type KnowledgeNodeRecord = {
-  id: string;
-  position: { x: number; y: number };
-  data: KnowledgeNodeData;
-};
+export const sourceLevelSchema = z.enum(["S", "A", "B", "C", "D", "E"]);
 
-export type KnowledgeEdgeRecord = {
-  id: string;
-  source: string;
-  target: string;
-  relationType:
-    | "precedes"
-    | "depends_on"
-    | "part_of"
-    | "enables"
-    | "contrasts_with"
-    | "related_to";
-  label: string;
-  status: "confirmed" | "proposed";
-};
+const httpUrlSchema = z.string().url().refine((value) => {
+  const protocol = new URL(value).protocol;
+  return protocol === "http:" || protocol === "https:";
+}, "来源地址必须使用 HTTP 或 HTTPS");
+
+export const nodeSourceSchema = z.object({
+  url: httpUrlSchema,
+  title: z.string().trim().min(1),
+  publisher: z.string().trim().min(1),
+  level: sourceLevelSchema,
+  sourceType: z.string().trim().min(1),
+  marketScope: z.string(),
+  accessedAt: z.string().trim().min(1),
+  supportedFields: z.array(z.string().trim().min(1)),
+  evidenceSummary: z.string().trim().min(1),
+});
+export type NodeSource = z.infer<typeof nodeSourceSchema>;
+
+export const knowledgeNodeDataSchema = z.object({
+  termZh: z.string().trim().min(1),
+  termEn: z.string().trim().min(1),
+  domainZh: z.string().trim().min(1),
+  domainEn: z.string().trim().min(1),
+  scopeZh: z.string().trim().min(1),
+  scopeEn: z.string().trim().min(1),
+  definitionZh: z.string().trim().min(1),
+  definitionEn: z.string().trim().min(1),
+  exampleZh: z.string().trim().min(1),
+  exampleEn: z.string().trim().min(1).optional(),
+  status: nodeStatusSchema,
+  confidence: z.number().min(0).max(1).optional(),
+  sourceCount: z.number().int().min(0).optional(),
+  createdAt: z.string().optional(),
+  suggestionReason: z.string().optional(),
+  sources: z.array(nodeSourceSchema).optional(),
+});
+export type KnowledgeNodeData = z.infer<typeof knowledgeNodeDataSchema>;
+
+export const knowledgeNodeRecordSchema = z.object({
+  id: z.string().trim().min(1),
+  position: z.object({ x: z.number(), y: z.number() }),
+  data: knowledgeNodeDataSchema,
+});
+export type KnowledgeNodeRecord = z.infer<typeof knowledgeNodeRecordSchema>;
+
+export const relationTypeSchema = z.enum([
+  "precedes",
+  "follows",
+  "depends_on",
+  "is_a",
+  "part_of",
+  "enables",
+  "contrasts_with",
+  "related_to",
+]);
+
+export const knowledgeEdgeRecordSchema = z.object({
+  id: z.string().trim().min(1),
+  source: z.string().trim().min(1),
+  target: z.string().trim().min(1),
+  relationType: relationTypeSchema,
+  label: z.string().trim().min(1),
+  status: z.enum(["confirmed", "proposed"]),
+});
+export type KnowledgeEdgeRecord = z.infer<typeof knowledgeEdgeRecordSchema>;
 
 export const initialNodes: KnowledgeNodeRecord[] = [
   {
@@ -168,6 +201,65 @@ export const initialEdges: KnowledgeEdgeRecord[] = [
   { id: "settlement-reconciliation", source: "securities-settlement", target: "reconciliation", relationType: "precedes", label: "后续核对", status: "proposed" },
   { id: "cutover-clearing", source: "end-of-day-cutover", target: "trade-clearing", relationType: "related_to", label: "批处理窗口", status: "proposed" },
 ];
+
+export const knowledgeDocumentSchema = z.object({
+  version: z.literal(1),
+  nodes: z.array(knowledgeNodeRecordSchema),
+  edges: z.array(knowledgeEdgeRecordSchema),
+}).superRefine((document, context) => {
+  const nodeIds = new Set<string>();
+  const edgeIds = new Set<string>();
+
+  document.nodes.forEach((node, index) => {
+    if (nodeIds.has(node.id)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `节点 ID 重复：${node.id}`,
+        path: ["nodes", index, "id"],
+      });
+    }
+    nodeIds.add(node.id);
+  });
+
+  document.edges.forEach((edge, index) => {
+    if (edgeIds.has(edge.id)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `关系 ID 重复：${edge.id}`,
+        path: ["edges", index, "id"],
+      });
+    }
+    edgeIds.add(edge.id);
+
+    if (!nodeIds.has(edge.source) || !nodeIds.has(edge.target)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `关系 ${edge.id} 引用了不存在的节点`,
+        path: ["edges", index],
+      });
+    }
+  });
+});
+
+export type KnowledgeDocument = z.infer<typeof knowledgeDocumentSchema>;
+
+export const initialDocument: KnowledgeDocument = {
+  version: 1,
+  nodes: initialNodes,
+  edges: initialEdges,
+};
+
+export function createInitialDocument(): KnowledgeDocument {
+  return {
+    version: 1,
+    nodes: initialNodes.map((node) => ({
+      ...node,
+      position: { ...node.position },
+      data: { ...node.data },
+    })),
+    edges: initialEdges.map((edge) => ({ ...edge })),
+  };
+}
 
 export const statusLabel: Record<NodeStatus, string> = {
   confirmed: "已点亮",

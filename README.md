@@ -8,12 +8,15 @@
 
 ```bash
 npm install
+cp .env.example .env.local
 npm run dev
 ```
 
+在 `.env.local` 中填写服务端使用的 `OPENAI_API_KEY`。可通过 `OPENAI_MODEL` 覆盖默认模型；API Key 不会进入浏览器或本地 JSON。
+
 开发服务器启动后，打开终端输出的本地地址。
 
-第一阶段将知识节点保存为浏览器本地 JSON，并提供导入和导出。清除浏览器数据前请先导出备份。
+当前版本会在 Next.js 服务端通过 Responses API 联网研究术语，校验结构与来源后，将知识节点保存为浏览器本地 JSON，并提供导入和导出。清除浏览器数据前请先导出备份。
 
 ## 常用命令
 
