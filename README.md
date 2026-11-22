@@ -12,7 +12,7 @@ cp .env.example .env.local
 npm run dev
 ```
 
-在 `.env.local` 中填写服务端使用的 `OPENAI_API_KEY`。可通过 `OPENAI_MODEL` 覆盖默认模型；API Key 不会进入浏览器或本地 JSON。
+在 `.env.local` 中填写服务端使用的 `AIHUBMIX_API_KEY`。默认通过 AIHubMix 官方备用入口 `https://api.inferera.com/v1` 调用 `gpt-5.6-luna`，避免部分网络无法连接主域名；API Key 不会进入浏览器或本地 JSON。项目仍兼容 `OPENAI_API_KEY` 作为备用配置。
 
 开发服务器启动后，打开终端输出的本地地址。
 

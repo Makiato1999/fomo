@@ -21,7 +21,7 @@
 - 第一阶段用单一 JSON 文档表示节点和关系，并保存在浏览器 `localStorage`；
 - Neon PostgreSQL 作为需要跨设备持久化后的升级方案，不阻塞第一阶段；
 - 第一阶段不使用 Neo4j 或独立向量数据库；
-- 第一阶段不引入 LangChain 或 LangGraph，直接使用 OpenAI 官方 SDK 和应用自己的任务状态机；
+- 第一阶段不引入 LangChain 或 LangGraph，使用 OpenAI 官方 TypeScript SDK 调用 AIHubMix 的 Responses 兼容接口，并由应用维护自己的任务状态机；
 - 已点亮节点与 AI 推荐的未点亮节点分别存储。
 
 产品需求文档与本方案均已统一为单关键词输入流程。
@@ -39,7 +39,7 @@ Browser
           ▼
 Next.js Application
 └── Future Route Handler
-    └── OpenAI Responses API
+    └── AIHubMix Responses-compatible API
 ```
 
 ### 2.1 推荐技术栈
@@ -52,7 +52,7 @@ Next.js Application
 | 部署平台 | Vercel | 标准 Next.js 构建、Preview 与生产部署 |
 | 第一阶段存储 | localStorage + JSON 文件 | 单用户本地持久化、导入和导出 |
 | 数据校验 | Zod | JSON 导入和未来 AI 结构化输出校验 |
-| AI 接口 | OpenAI Responses API | 联网研究、结构化生成和关系推断 |
+| AI 接口 | AIHubMix Responses 兼容接口 | 使用 `gpt-5.6-luna` 执行研究和结构化生成 |
 
 第一阶段不实现后台任务、数据库和高级自动布局。先验证节点字段、关系图、右侧详情和 Agent 输出流程。
 
@@ -82,7 +82,7 @@ localStorage JSON
 - Route Handler 与 Server Action 提供服务端入口，但不直接承载领域规则；
 - Service 负责术语研究、节点生成、关系推断和图谱投影；
 - Repository 边界负责 JSON 读写，未来可替换成 Neon 实现；
-- OpenAI 等外部服务始终从服务端访问。
+- AIHubMix、OpenAI 等外部服务始终从服务端访问。
 
 “逻辑分层”意味着前端和服务端代码边界清晰、可以单独测试；“统一部署”意味着第一阶段不增加跨服务认证、接口版本、CORS 和两套部署流水线。未来只有在后台任务规模、独立扩容或团队协作产生明确需要时，才将服务端能力拆成独立服务。
 
@@ -144,9 +144,9 @@ Next.js Domain Service
         ↓
 TermResearchProvider interface
         ↓
-OpenAITermResearchProvider
+ResponsesTermResearchProvider
         ↓
-OpenAI Responses API
+AIHubMix Responses-compatible API
 ```
 
 相比额外引入 LangChain 和 LangGraph，这样可以：
@@ -171,7 +171,7 @@ interface TermResearchProvider {
 }
 ```
 
-第一阶段实现 `OpenAITermResearchProvider`。因此未来更换模型供应商或改用 LangChain 时，不需要修改节点、关系和证据的数据模型。
+第一阶段实现 Responses 兼容的研究 Provider，默认以 OpenAI SDK 连接 AIHubMix，并调用 `gpt-5.6-luna`。如果模型不接受 `web_search` 或 JSON Schema Structured Outputs，接口必须明确失败，不得退化为无来源生成。因此未来切换模型或改用 LangChain 时，不需要修改节点、关系和证据的数据模型。
 
 #### 重新评估条件
 
@@ -784,7 +784,7 @@ Page
 - 本地 JSON 不保存 API Key 或其他密钥；
 - 用户应通过导出 JSON 备份浏览器数据；
 - 部署到公网时必须增加登录或访问保护；
-- OpenAI API Key 只存在服务端环境变量；
+- AIHubMix 或 OpenAI API Key 只存在服务端环境变量；
 - 客户端不能直接调用模型接口；
 - 日志不记录完整双语解释和不必要的原始模型响应；
 - 来源 URL 和模型调用元数据可以记录，但不得包含密钥；
