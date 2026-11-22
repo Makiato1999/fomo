@@ -1,8 +1,8 @@
 # 双语术语知识图谱：第一阶段技术方案
 
 > 状态：Draft  
-> 版本：v0.3  
-> 日期：2026-11-21  
+> 版本：v0.5
+> 日期：2026-11-22
 > 关联文档：[产品需求文档](./product-requirements.md)
 
 ## 1. 已确认的技术决策
@@ -15,9 +15,11 @@
 - 语境明确时自动继续，只有语境会显著改变术语含义时才询问用户；
 - 正式节点生成前必须联网验证中英文术语和领域定义；
 - 应用采用 Next.js 与 TypeScript；
+- 应用使用标准 Next.js App Router，并部署到 Vercel；
 - 前后端放在同一个 Next.js 项目和仓库中，逻辑分层但第一阶段不拆成两个独立服务；
-- 前端以可复用组件和视图组件组装页面，不在页面中持续堆叠一次性 CSS；
-- 数据在逻辑上是图，物理上使用 PostgreSQL 的节点表和关系表存储；
+- 前端主要界面为关系图，右侧固定显示当前节点详情；
+- 第一阶段用单一 JSON 文档表示节点和关系，并保存在浏览器 `localStorage`；
+- Neon PostgreSQL 作为需要跨设备持久化后的升级方案，不阻塞第一阶段；
 - 第一阶段不使用 Neo4j 或独立向量数据库；
 - 第一阶段不引入 LangChain 或 LangGraph，直接使用 OpenAI 官方 SDK 和应用自己的任务状态机；
 - 已点亮节点与 AI 推荐的未点亮节点分别存储。
@@ -28,40 +30,16 @@
 
 ```text
 Browser
-├── Keyword Input
-├── Context Disambiguation
-├── Node Detail
-└── Knowledge Graph (React Flow)
+├── Term Input
+├── Relationship Graph
+├── Node Detail Panel
+├── localStorage
+└── JSON Import / Export
           │
           ▼
 Next.js Application
-├── Page / UI Layer
-├── Route Handlers / Server Actions
-├── Domain Services
-│   ├── Term Normalization
-│   ├── Node Service
-│   ├── Graph Service
-│   ├── Search Service
-│   └── Evidence Service
-├── AI Workflow
-│   ├── Context Detection
-│   ├── Web Research
-│   ├── Node Composition
-│   ├── Relation Inference
-│   └── Suggested Node Generation
-└── Background Job Runner
-          │
-          ├──────── OpenAI Responses API
-          │         ├── Structured Outputs
-          │         └── Web Search
-          │
-          ▼
-PostgreSQL
-├── Knowledge Data
-├── Graph Relations
-├── Evidence and Sources
-├── Generation Jobs
-└── Revision History
+└── Future Route Handler
+    └── OpenAI Responses API
 ```
 
 ### 2.1 推荐技术栈
@@ -69,15 +47,14 @@ PostgreSQL
 | 层级 | 技术 | 用途 |
 | --- | --- | --- |
 | Web 框架 | Next.js + TypeScript | 页面、服务端接口和应用编排 |
-| UI | React + 设计令牌 + 组件样式 | 通过复用组件和 View 组装节点详情、输入及状态界面 |
-| 图谱组件 | React Flow | 节点、边、缩放、拖动和局部图谱 |
-| 数据库 | PostgreSQL | 节点、关系、来源、任务和版本数据 |
-| ORM | Drizzle ORM | Schema、迁移和类型安全查询 |
-| 数据校验 | Zod | API 输入和 AI 结构化输出校验 |
+| UI | React + Tailwind CSS | 术语输入、关系图和右侧节点详情 |
+| 图展示 | React Flow | 渲染可点击节点、边、缩放和拖动 |
+| 部署平台 | Vercel | 标准 Next.js 构建、Preview 与生产部署 |
+| 第一阶段存储 | localStorage + JSON 文件 | 单用户本地持久化、导入和导出 |
+| 数据校验 | Zod | JSON 导入和未来 AI 结构化输出校验 |
 | AI 接口 | OpenAI Responses API | 联网研究、结构化生成和关系推断 |
-| 测试 | Vitest + Playwright | 单元、集成和端到端测试 |
 
-后台任务实现应通过应用内接口抽象，不在第一版业务代码中绑定某个托管平台。确定部署平台后，可以接入对应的持久化任务服务。
+第一阶段不实现后台任务、数据库和高级自动布局。先验证节点字段、关系图、右侧详情和 Agent 输出流程。
 
 ### 2.2 Next.js 前后端组织方式
 
@@ -94,22 +71,39 @@ Application and Domain Service
   ↓
 Repository
   ↓
-PostgreSQL
+localStorage JSON
 ```
 
 各层职责如下：
 
-- 浏览器只负责输入、视图状态和交互，不直接连接数据库或调用模型；
+- 浏览器负责输入、编辑、JSON 存储和导入导出，但不直接调用模型；
 - Page 只处理路由级布局、初始数据和 View 组装；
-- View 表达关系图、领域树、流程视图等完整使用场景；
+- 第一阶段 View 表达关系图和右侧节点详情；
 - Route Handler 与 Server Action 提供服务端入口，但不直接承载领域规则；
 - Service 负责术语研究、节点生成、关系推断和图谱投影；
-- Repository 负责数据库读写，阻止数据库实现细节进入 UI；
-- PostgreSQL 与 OpenAI 等外部服务始终从服务端访问。
+- Repository 边界负责 JSON 读写，未来可替换成 Neon 实现；
+- OpenAI 等外部服务始终从服务端访问。
 
 “逻辑分层”意味着前端和服务端代码边界清晰、可以单独测试；“统一部署”意味着第一阶段不增加跨服务认证、接口版本、CORS 和两套部署流水线。未来只有在后台任务规模、独立扩容或团队协作产生明确需要时，才将服务端能力拆成独立服务。
 
-### 2.3 LangChain 与 LangGraph 决策
+### 2.3 部署与 JSON 存储
+
+项目使用标准 Next.js，不保留 Vinext、Cloudflare Workers、Wrangler、D1 或 Sites Hosting 配置。Vercel 从 GitHub 的 `main` 分支创建生产部署，其他分支和 Pull Request 创建 Preview Deployment。
+
+知识数据使用带版本号的 JSON 文档：
+
+```json
+{"version":1,"nodes":[],"edges":[]}
+```
+
+- 浏览器自动保存到 `localStorage`；
+- 用户可以导入和导出完整 JSON；
+- 导入时必须通过 Zod Schema 校验；
+- Vercel 文件系统不用于持久写入；
+- JSON Repository 与 UI 分离，未来迁移 Neon 时不改变节点字段和页面调用方式；
+- 当前方案不支持跨浏览器和跨设备同步，该能力留给 Neon 阶段。
+
+### 2.4 LangChain 与 LangGraph 决策
 
 #### 定位区别
 
@@ -193,11 +187,11 @@ interface TermResearchProvider {
 - 需要框架级 Checkpoint、复杂重试、回退和补偿；
 - 任务普遍运行数分钟以上，需要细粒度断点恢复和执行追踪。
 
-届时的迁移范围应限制在 AI 工作流编排层，不改变 PostgreSQL 中的业务数据模型。
+届时的迁移范围应限制在 AI 工作流编排层，不改变 JSON 节点契约。
 
 ## 3. 图数据的存储方式
 
-### 3.1 逻辑模型与物理模型
+### 3.1 逻辑模型与第一阶段存储
 
 产品逻辑模型是有向属性图：
 
@@ -205,18 +199,18 @@ interface TermResearchProvider {
 Node ── typed and directed Edge ──▶ Node
 ```
 
-物理存储采用关系型数据库：
+物理存储采用一个带版本号的 JSON 文档：
 
-- `nodes` 表中的一行代表一个正式知识节点；
-- `edges` 表中的一行代表两个正式节点之间的一条关系；
-- `suggestions` 表保存尚未点亮的建议节点；
-- 图谱页面所需 JSON 由服务端查询后生成，不作为主要存储格式。
+- `nodes` 数组保存正式、草稿和建议节点；
+- `edges` 数组保存节点之间的有向关系；
+- 整个文档自动写入浏览器 `localStorage`；
+- 用户可导入、导出 JSON 作为备份和迁移格式。
 
-使用 PostgreSQL 不会改变数据的图属性。第一阶段的主要查询是名称搜索、领域筛选和一至两层邻居查询，关系表可以直接支持。
+节点与边构成逻辑图，第一阶段直接从 JSON 生成基础关系图，不实现图数据库和复杂布局。
 
-### 3.2 不将整个节点保存为单一 JSON
+### 3.2 未来迁移关系数据库
 
-术语名称、领域、范围、解释和状态使用独立列，原因包括：
+出现跨设备同步、多浏览器访问、服务端任务恢复或数据规模增长后，再将 JSON Repository 替换为 Neon PostgreSQL。届时术语名称、领域、范围、解释和状态使用独立列，以便：
 
 - 可以建立索引并精确搜索；
 - 可以单独修改和验证字段；
@@ -225,11 +219,11 @@ Node ── typed and directed Edge ──▶ Node
 - 可以检测重复节点；
 - 数据迁移和统计更稳定。
 
-JSONB 仅用于低频、结构可能变化的辅助元数据，例如模型调用参数和原始生成结果。
+JSON 导出格式继续保留，作为用户可控的备份和交换格式。
 
-## 4. 核心数据模型
+## 4. Neon 阶段目标数据模型
 
-所有主键使用 UUID，所有时间使用 UTC 保存，在界面按用户时区显示。
+本节不是第一阶段的实现要求，而是未来迁移 Neon 时的数据目标。所有主键使用 UUID，所有时间使用 UTC 保存，在界面按用户时区显示。
 
 ### 4.1 `workspaces`
 
@@ -593,11 +587,13 @@ GET    /api/search?q=:query
 
 UI 内部的简单编辑可使用 Server Actions；需要流式、轮询或将来可能被其他客户端调用的能力使用 Route Handlers。业务逻辑必须放在独立 service 层，不能直接写在页面或路由中。
 
-## 8. 图谱查询与前端表示
+## 8. 图谱表示与后续投影
 
-### 8.1 局部加载
+第一阶段直接把 JSON 中的全部 `nodes`、`edges` 和节点 `position` 传给 React Flow。关系图占主区域，点击节点后在右侧详情面板显示中英文术语、领域、范围、解释和案例。用户可以拖动节点，自动整理布局后续再实现。
 
-默认只返回中心节点的一层邻居，用户展开时再请求下一层。响应结构：
+### 8.1 后续局部加载
+
+接入服务端持久化且节点数量明显增长后，默认只返回中心节点的一层邻居，用户展开时再请求下一层。响应结构：
 
 ```json
 {
@@ -625,11 +621,11 @@ UI 内部的简单编辑可使用 Server Actions；需要流式、轮询或将�
 }
 ```
 
-建议节点在响应中映射为 `kind: suggested`，但数据库中仍与正式节点分开。
+建议节点在响应中映射为 `kind: suggested`。
 
 ### 8.2 同一图数据的三种投影
 
-数据库只保存一份 `nodes` 和 `edges`。服务端的 Graph Projection Service 根据视图类型筛选关系、选择局部节点并生成布局约束，前端只负责渲染结果和提交用户交互。
+JSON 或未来数据库只保存一份 `nodes` 和 `edges`。第一阶段只实现关系图；需要领域树和流程视图时，再由服务端 Graph Projection Service 生成投影。
 
 ```text
 nodes + edges
@@ -728,20 +724,20 @@ Page
     └── UI primitive
 ```
 
-三种图谱展示分别实现为 `RelationshipView`、`DomainTreeView` 和 `ProcessView`。它们共享搜索框、视图切换器、节点详情、节点卡片、状态标识、来源列表和图谱画布等组件，不复制完整页面。
+第一阶段只实现关系图工作台。未来增加 `DomainTreeView` 和 `ProcessView` 时复用节点组件、选择状态和详情面板，不复制完整页面。
 
 样式遵循以下约束：
 
 - 颜色、字号、间距、边框和交互状态集中为少量设计令牌；
 - 基础按钮、输入框、面板、状态标识等样式只定义一次；
 - 页面文件不编写大段一次性样式，只负责结构和组合；
-- 图布局坐标由 Graph Projection Service 和布局适配层产生，不用 CSS 模拟图布局；
+- 第一阶段使用简单确定性坐标；复杂布局未来由 Graph Projection Service 产生；
 - 只保留能表达信息层级、状态差异和可访问性的视觉效果；
 - 不引入纯装饰性的复杂动画、渐变、阴影层叠或额外视觉框架；
 - 新增样式优先扩展已有组件 variant，确实无法复用时再创建新组件；
 - 保证正文、辅助信息、节点状态和关系线具备足够对比度，并保留键盘焦点状态。
 
-样式实现可以使用 Tailwind utility、CSS Modules 或少量全局 CSS，但选择标准是组件封装和维护成本，而不是追求某种特定写法。全局 CSS 只保存基础重置、设计令牌以及 React Flow 等第三方组件的必要覆盖。
+布局和组件样式使用 Tailwind utility；全局 CSS 只保存基础字体、焦点状态和 React Flow 必要覆盖，不引入额外组件框架。
 
 ## 9. 搜索与去重
 
@@ -785,74 +781,43 @@ Page
 
 第一阶段不实现注册、团队或协作权限，但需要：
 
-- 所有数据关联固定 `workspace_id`；
-- 本地开发可使用固定身份；
+- 本地 JSON 不保存 API Key 或其他密钥；
+- 用户应通过导出 JSON 备份浏览器数据；
 - 部署到公网时必须增加登录或访问保护；
 - OpenAI API Key 只存在服务端环境变量；
 - 客户端不能直接调用模型接口；
 - 日志不记录完整双语解释和不必要的原始模型响应；
 - 来源 URL 和模型调用元数据可以记录，但不得包含密钥；
-- 数据库提供定期备份及 JSON 导出能力。
+- 接入 Neon 后再增加服务端备份和跨设备同步。
 
 ## 13. 推荐目录结构
 
 ```text
 app/
-├── page.tsx
-├── graph/page.tsx
-├── nodes/[id]/page.tsx
-└── api/
-    ├── terms/route.ts
-    ├── jobs/[id]/route.ts
-    ├── nodes/[id]/route.ts
-    ├── graph/route.ts
-    └── search/route.ts
+├── globals.css
+├── layout.tsx
+└── page.tsx
 
 components/
-├── ui/
-├── graph/
-├── node/
-├── sources/
-└── term-input/
+└── knowledge-graph/
+    ├── knowledge-workspace.tsx
+    ├── term-input.tsx
+    ├── relationship-graph.tsx
+    ├── node-detail-panel.tsx
+    └── term-node.tsx
 
-views/
-├── relationship-view.tsx
-├── domain-tree-view.tsx
-└── process-view.tsx
-
-features/
-├── term-research/
-├── graph-projection/
-└── node-suggestions/
-
-server/
-├── ai/
-│   ├── schemas/
-│   ├── prompts/
-│   ├── research.ts
-│   └── workflow.ts
-├── domain/
-│   ├── nodes/
-│   ├── edges/
-│   ├── evidence/
-│   └── suggestions/
-├── jobs/
-└── db/
-    ├── schema.ts
-    ├── queries/
-    └── migrations/
-
-shared/
-├── types/
-└── validation/
+lib/
+└── knowledge.ts
 ```
 
-提示词、Zod Schema 与领域规则分开保存。提示词不得直接负责数据库写入，数据库写入只能由通过校验的应用服务执行。
+需要接入 Agent 时再增加 `app/api/terms/route.ts` 和 `server/ai/`，不提前创建空目录和抽象层。
 
 ## 14. 测试策略
 
 ### 14.1 单元测试
 
+- JSON Schema 校验；
+- JSON 导入与导出；
 - 术语规范化；
 - 重复检测；
 - 关系方向校验；
@@ -862,12 +827,10 @@ shared/
 
 ### 14.2 集成测试
 
-- 输入到任务创建；
-- 语境暂停和恢复；
-- 研究结果到正式节点；
-- 节点、证据和来源的事务写入；
-- 局部图谱查询；
-- 建议节点点亮。
+- 创建节点并自动保存；
+- 刷新后恢复本地 JSON；
+- 导入错误结构时显示明确错误；
+- Agent 结果返回后写入节点文档。
 
 ### 14.3 AI 质量评估集
 
@@ -896,10 +859,12 @@ AI 测试不得只比较整段文本是否完全相同，应比较结构字段�
 
 ### Phase 1：数据与基础页面
 
-- 初始化 Next.js、TypeScript、Drizzle 和 PostgreSQL；
-- 实现核心数据表及迁移；
-- 完成单关键词输入、任务状态和节点详情骨架；
-- 实现基础搜索和重复检查。
+- 使用标准 Next.js、React 和 Zod；
+- 实现版本化节点与关系 JSON Schema；
+- 完成单关键词输入、关系图和右侧节点详情；
+- 使用 React Flow 展示可点击、可拖动的节点和边；
+- 实现 localStorage 自动保存及 JSON 导入导出；
+- 不实现数据库、动画和复杂图布局。
 
 ### Phase 2：节点生成闭环
 
@@ -909,20 +874,24 @@ AI 测试不得只比较整段文本是否完全相同，应比较结构字段�
 - 实现结构化节点生成、证据校验和持久化；
 - 实现失败恢复和有限重试。
 
-### Phase 3：知识图谱
+### Phase 3：服务端持久化
+
+- 接入 Neon PostgreSQL 和 Drizzle；
+- 将 JSON Repository 替换为服务端 Repository；
+- 实现跨设备同步、revision 和任务恢复；
+- 保留 JSON 导入导出。
+
+### Phase 4：知识图谱与质量
 
 - 实现关系推断和确认；
-- 实现 React Flow 局部关系图，并默认加载中心节点的一层邻居；
+- 在现有 React Flow 基础关系图上增加关系推断和确认；
 - 区分正式节点、建议节点和待校验状态；
 - 实现局部展开和节点详情跳转；
 - 实现 Graph Projection Service 及统一视图响应结构；
 - 增加关系图、领域树和流程视图切换；
 - 实现领域树的层级投影、多父节点处理和折叠；
 - 实现流程视图的方向规范化、分支布局和环检测；
-- 保存分视图节点位置，并支持用户固定位置和局部重新布局。
-
-### Phase 4：知识缺口与质量
-
+- 如实现可视化，再保存分视图节点位置和局部布局；
 - 实现未点亮节点推荐、点亮和忽略；
 - 实现 revision 和用户字段保护；
 - 建立 AI 质量评估集；
@@ -932,7 +901,9 @@ AI 测试不得只比较整段文本是否完全相同，应比较结构字段�
 
 以下内容不阻塞第一阶段开发：
 
-- 具体托管平台和持久化任务产品；
+- 持久化后台任务产品；
+- Neon PostgreSQL、Drizzle 和跨设备同步；
+- 领域树、流程视图和高级自动布局；
 - embedding 模型与 pgvector；
 - 图数据库；
 - 多用户认证；
@@ -949,6 +920,8 @@ AI 测试不得只比较整段文本是否完全相同，应比较结构字段�
 - [LangChain Overview](https://docs.langchain.com/oss/javascript/langchain/overview)
 - [LangGraph Graph API](https://docs.langchain.com/oss/javascript/langgraph/thinking-in-graph-api)
 - [Next.js Route Handlers](https://nextjs.org/docs/app/getting-started/route-handlers)
+- [Next.js on Vercel](https://vercel.com/docs/frameworks/full-stack/nextjs)
+- [Drizzle with Neon](https://orm.drizzle.team/docs/connect-neon)
 - [React Flow](https://reactflow.dev/)
 - [pgvector](https://github.com/pgvector/pgvector)
 

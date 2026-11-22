@@ -1,41 +1,25 @@
 "use client";
 
 import { type FormEvent, useCallback, useMemo, useState } from "react";
+import { type Edge, type Node, type NodeMouseHandler } from "@xyflow/react";
 import {
-  Background,
-  BackgroundVariant,
-  Controls,
-  MiniMap,
-  ReactFlow,
-  type Edge,
-  type Node,
-  type NodeMouseHandler,
-} from "@xyflow/react";
-import {
-  ArrowRight,
   BookOpenText,
   Check,
   ChevronRight,
   CircleHelp,
   Command,
-  CornerDownLeft,
-  ExternalLink,
   GitFork,
-  Languages,
-  LoaderCircle,
   Network,
-  PanelRightClose,
-  Search,
-  Sparkles,
 } from "lucide-react";
-import { TermNode } from "./term-node";
 import {
   initialEdges,
   initialNodes,
-  statusLabel,
   type KnowledgeNodeData,
   type KnowledgeNodeRecord,
 } from "@/lib/knowledge";
+import { NodeDetailPanel } from "./node-detail-panel";
+import { RelationshipGraph } from "./relationship-graph";
+import { TermInput } from "./term-input";
 
 type PipelineStage = "idle" | "checking" | "context" | "researching" | "composing";
 
@@ -46,7 +30,6 @@ const stageCopy: Record<Exclude<PipelineStage, "idle">, string> = {
   composing: "生成双语节点与关系",
 };
 
-const nodeTypes = { knowledge: TermNode };
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function toFlowNodes(records: KnowledgeNodeRecord[]): Node[] {
@@ -68,6 +51,8 @@ const flowEdges: Edge[] = initialEdges.map((edge) => ({
   labelBgBorderRadius: 10,
 }));
 
+const railButton = "grid h-9 w-9 cursor-pointer place-items-center rounded-lg border-0 bg-transparent text-[#4e5952] hover:bg-white hover:text-[#111a15]";
+
 export function KnowledgeWorkspace() {
   const [nodes, setNodes] = useState<Node[]>(() => toFlowNodes(initialNodes));
   const [selectedId, setSelectedId] = useState("securities-settlement");
@@ -87,20 +72,16 @@ export function KnowledgeWorkspace() {
     setDetailOpen(true);
   }, []);
 
-  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const term = keyword.trim();
     if (!term || stage !== "idle") return;
 
     setNotice("正在运行术语工作流");
-    setStage("checking");
-    await sleep(520);
-    setStage("context");
-    await sleep(580);
-    setStage("researching");
-    await sleep(820);
-    setStage("composing");
-    await sleep(620);
+    setStage("checking"); await sleep(520);
+    setStage("context"); await sleep(580);
+    setStage("researching"); await sleep(820);
+    setStage("composing"); await sleep(620);
 
     const existing = nodes.find((node) => {
       const data = node.data as unknown as KnowledgeNodeData;
@@ -114,14 +95,7 @@ export function KnowledgeWorkspace() {
       const data = existing.data as unknown as KnowledgeNodeData;
       if (data.status === "suggested") {
         setNodes((current) => current.map((node) => node.id === existing.id
-          ? {
-              ...node,
-              data: {
-                ...node.data,
-                status: "needs_review",
-                createdAt: new Date().toISOString().slice(0, 10),
-              },
-            }
+          ? { ...node, data: { ...node.data, status: "needs_review", createdAt: new Date().toISOString().slice(0, 10) } }
           : node));
         setNotice("建议节点已进入校验队列");
       } else {
@@ -129,7 +103,7 @@ export function KnowledgeWorkspace() {
       }
     } else {
       const id = `draft-${Date.now()}`;
-      const draft: Node = {
+      setNodes((current) => [...current, {
         id,
         type: "knowledge",
         position: { x: 440, y: 40 },
@@ -148,8 +122,7 @@ export function KnowledgeWorkspace() {
           sourceCount: 0,
           createdAt: new Date().toISOString().slice(0, 10),
         },
-      };
-      setNodes((current) => [...current, draft]);
+      }]);
       setSelectedId(id);
       setDetailOpen(true);
       setNotice("已创建待校验草稿，没有生成未经验证的事实");
@@ -157,149 +130,49 @@ export function KnowledgeWorkspace() {
 
     setKeyword("");
     setStage("idle");
-  };
+  }
 
   return (
-    <main className="app-shell">
-      <aside className="rail" aria-label="主导航">
-        <div className="brand-mark" aria-label="Fomo"><span>F</span></div>
-        <nav className="rail-nav">
-          <button className="rail-button is-active" aria-label="知识图谱"><Network size={18} /></button>
-          <button className="rail-button" aria-label="节点列表"><BookOpenText size={18} /></button>
-          <button className="rail-button" aria-label="关系"><GitFork size={18} /></button>
+    <main className="grid h-dvh w-screen grid-cols-[58px_minmax(0,1fr)] overflow-hidden bg-[#eef1eb] text-[#111a15] max-[740px]:grid-cols-1">
+      <aside className="z-10 flex flex-col items-center border-r border-[#c8cec7] bg-[#dfe4dc] py-4 max-[740px]:hidden" aria-label="主导航">
+        <div className="grid h-8 w-8 place-items-center rounded-lg bg-[#111a15] font-serif text-lg font-bold text-white" aria-label="Fomo">F</div>
+        <nav className="flex flex-1 flex-col gap-2 pt-9">
+          <button className={`${railButton} bg-white text-[#1f654a] shadow-sm`} aria-label="知识图谱"><Network size={18} /></button>
+          <button className={railButton} aria-label="节点列表"><BookOpenText size={18} /></button>
+          <button className={railButton} aria-label="关系"><GitFork size={18} /></button>
         </nav>
-        <button className="rail-button rail-help" aria-label="帮助"><CircleHelp size={18} /></button>
+        <button className={railButton} aria-label="帮助"><CircleHelp size={18} /></button>
       </aside>
 
-      <section className="workspace">
-        <header className="topbar">
-          <div className="title-block">
-            <span className="eyebrow">PERSONAL KNOWLEDGE SYSTEM</span>
-            <h1>术语图谱</h1>
+      <section className="grid min-h-0 min-w-0 grid-rows-[72px_37px_minmax(0,1fr)_27px] max-[740px]:grid-rows-[auto_34px_minmax(0,1fr)_25px]">
+        <header className="grid grid-cols-[minmax(170px,.7fr)_minmax(340px,700px)_minmax(130px,.7fr)] items-center gap-7 border-b border-[#c8cec7] bg-white/90 px-6 max-[740px]:grid-cols-1 max-[740px]:p-3.5">
+          <div className="max-[740px]:hidden">
+            <span className="text-[10px] font-bold tracking-[.12em] text-[#66716a]">PERSONAL KNOWLEDGE SYSTEM</span>
+            <h1 className="mt-0.5 mb-0 font-serif text-[22px] font-semibold tracking-tight">术语图谱</h1>
           </div>
-
-          <form className="term-search" onSubmit={handleSubmit}>
-            <Search size={17} aria-hidden="true" />
-            <input
-              value={keyword}
-              onChange={(event) => setKeyword(event.target.value)}
-              placeholder="输入一个专业术语，如：券款对付"
-              aria-label="输入专业术语"
-              disabled={stage !== "idle"}
-            />
-            <button type="submit" disabled={!keyword.trim() || stage !== "idle"}>
-              {stage === "idle" ? <CornerDownLeft size={15} /> : <LoaderCircle size={15} className="spin" />}
-              <span>{stage === "idle" ? "建立节点" : "研究中"}</span>
-            </button>
-          </form>
-
-          <div className="top-actions">
-            <button className="command-button" aria-label="打开命令面板"><Command size={15} /><span>K</span></button>
-            <div className="avatar">XR</div>
+          <TermInput keyword={keyword} loading={stage !== "idle"} onKeywordChange={setKeyword} onSubmit={handleSubmit} />
+          <div className="flex items-center justify-end gap-3 max-[980px]:hidden">
+            <button className="flex h-8 items-center gap-1 rounded-lg border border-[#aeb8af] px-2 text-[11px] text-[#4f5b54]"><Command size={15} />K</button>
+            <div className="grid h-8 w-8 place-items-center rounded-full bg-[#ccdacf] text-[11px] font-bold text-[#244b37]">XR</div>
           </div>
         </header>
 
-        <div className="context-bar">
-          <div className="breadcrumb"><span>全部领域</span><ChevronRight size={13} /><strong>证券交易后处理</strong></div>
-          <div className="legend">
-            <span><i className="legend-dot confirmed" />已点亮</span>
-            <span><i className="legend-dot suggested" />待点亮</span>
-            <span><i className="legend-dot review" />待校验</span>
-          </div>
+        <div className="flex items-center justify-between border-b border-[#c8cec7] bg-[#f7f8f4] px-6 text-[11px] text-[#4f5b54]">
+          <div className="flex items-center gap-1"><span>全部领域</span><ChevronRight size={13} /><strong>证券交易后处理</strong></div>
+          <div className="flex gap-4 max-[740px]:hidden"><span>● 已点亮</span><span>○ 待点亮</span><span className="text-[#8b4d18]">● 待校验</span></div>
         </div>
 
-        <div className={`content-grid ${detailOpen ? "has-detail" : ""}`}>
-          <section className="graph-panel" aria-label="知识图谱">
-            <div className="graph-kicker"><span>{nodes.length} 个概念</span><span>·</span><span>{flowEdges.length} 条关系</span></div>
-            <ReactFlow
-              nodes={nodes}
-              edges={flowEdges}
-              nodeTypes={nodeTypes}
-              onNodeClick={handleNodeClick}
-              fitView
-              fitViewOptions={{ padding: 0.22 }}
-              minZoom={0.45}
-              maxZoom={1.65}
-              nodesDraggable
-              nodesConnectable={false}
-              elementsSelectable
-            >
-              <Background variant={BackgroundVariant.Dots} gap={24} size={1.2} color="#c4cbc3" />
-              <Controls position="bottom-left" showInteractive={false} />
-              <MiniMap
-                position="bottom-right"
-                pannable
-                zoomable
-                nodeColor={(node) => {
-                  const data = node.data as unknown as KnowledgeNodeData;
-                  if (data.status === "confirmed") return "#33755d";
-                  if (data.status === "needs_review") return "#b9783f";
-                  return "#8f978f";
-                }}
-              />
-            </ReactFlow>
-
-            <div className="graph-notice" aria-live="polite">
-              {stage === "idle"
-                ? <><span className="notice-pulse" />{notice}</>
-                : <><LoaderCircle size={14} className="spin" />{stageCopy[stage]}</>}
-            </div>
-          </section>
-
+        <div className={`relative grid min-h-0 min-w-0 ${detailOpen ? "grid-cols-[minmax(0,1fr)_minmax(330px,29vw)] max-[740px]:grid-cols-1 max-[740px]:grid-rows-[minmax(260px,.9fr)_minmax(300px,1.1fr)]" : "grid-cols-1"}`}>
+          <RelationshipGraph nodes={nodes} edges={flowEdges} notice={notice} stageMessage={stage === "idle" ? undefined : stageCopy[stage]} onNodeClick={handleNodeClick} />
           {detailOpen && selected ? (
-            <aside className="detail-panel" aria-label="节点详情">
-              <div className="detail-head">
-                <div>
-                  <span className={`status-chip status-chip--${selected.status}`}>{statusLabel[selected.status]}</span>
-                  <h2>{selected.termZh}</h2>
-                  <p className="detail-term-en">{selected.termEn}</p>
-                </div>
-                <button onClick={() => setDetailOpen(false)} aria-label="关闭详情"><PanelRightClose size={18} /></button>
-              </div>
-
-              {selected.status === "suggested" && (
-                <div className="suggestion-callout">
-                  <Sparkles size={16} />
-                  <div><strong>为什么推荐</strong><p>{selected.suggestionReason}</p></div>
-                </div>
-              )}
-
-              <div className="detail-section domain-card">
-                <div><span>领域 / DOMAIN</span><strong>{selected.domainZh}</strong><p>{selected.domainEn}</p></div>
-                <ArrowRight size={17} />
-                <div><span>范围 / SCOPE</span><strong>{selected.scopeZh}</strong><p>{selected.scopeEn}</p></div>
-              </div>
-
-              <div className="detail-section">
-                <div className="section-title"><Languages size={15} /><h3>解释</h3></div>
-                <p className="body-copy">{selected.definitionZh}</p>
-                <p className="english-copy">{selected.definitionEn}</p>
-              </div>
-
-              <div className="detail-section">
-                <div className="section-title"><BookOpenText size={15} /><h3>例子</h3></div>
-                <p className="example-copy">{selected.exampleZh}</p>
-              </div>
-
-              <div className="detail-footer">
-                <div><span>可信度</span><strong>{Math.round((selected.confidence ?? 0) * 100)}%</strong></div>
-                <div><span>来源</span><strong>{selected.sourceCount ?? 0} 个</strong></div>
-                <div><span>创建</span><strong>{selected.createdAt ?? "尚未点亮"}</strong></div>
-              </div>
-
-              <button className="sources-button">查看字段级来源<ExternalLink size={14} /></button>
-            </aside>
+            <NodeDetailPanel node={selected} onClose={() => setDetailOpen(false)} />
           ) : (
-            <button className="open-detail" onClick={() => setDetailOpen(true)}>打开节点详情</button>
+            <button className="absolute top-4 right-4 z-10 rounded-lg border border-[#aeb8af] bg-white px-3 py-2 text-[11px] font-semibold" onClick={() => setDetailOpen(true)}>打开节点详情</button>
           )}
         </div>
 
-        <footer className="statusbar">
-          <span><i className="notice-pulse" />原型数据</span>
-          <span className="status-separator" />
-          <span><Check size={12} />当前会话内保存</span>
-          <span className="status-spacer" />
-          <span>Prototype 0.1</span>
+        <footer className="flex items-center gap-2 border-t border-[#c8cec7] bg-[#dfe4dc] px-4 text-[10px] text-[#4f5b54]">
+          <span>● 原型数据</span><span className="h-2.5 w-px bg-[#b9c0b8]" /><span className="flex items-center gap-1"><Check size={12} />当前会话内保存</span><span className="flex-1" /><span>Prototype 0.1</span>
         </footer>
       </section>
     </main>

@@ -9,10 +9,8 @@
 !/.yarn/releases/
 !/.yarn/versions/
 
-# Generated builds and framework state
-/dist/
+# Generated Next.js builds
 /.next/
-/.vinext/
 /out/
 next-env.d.ts
 *.tsbuildinfo
@@ -28,18 +26,11 @@ yarn-error.log*
 
 # Local environment and keys
 .env*
-.dev.vars*
+!.env.example
 *.pem
 
-# Checkout-local tool state
-/.wrangler/
-/.sites-runtime/
-
-# Workspace scaffolding and publication archives
-/.agents/
-/.codex/
-/outputs/
-/work/
+# Vercel project state
+/.vercel/
 
 # OS metadata
 .DS_Store
